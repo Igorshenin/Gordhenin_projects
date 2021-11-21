@@ -1,0 +1,292 @@
+import random
+
+
+class BoardException(Exception):
+    pass
+
+
+class BoardOutException(BoardException):
+    def __str__(self):
+        return "Вы пытаетесь выстрелить за доску!"
+
+
+class BoardUsedException(BoardException):
+    def __str__(self):
+        return "Вы уже стреляли в эту клетку"
+
+
+class BoardWrongShipException(BoardException):
+    def __str__(self):
+        return "Попытка поставить корабль неверно!"
+
+
+class GameBoard:  # Конструктор игрового поля
+    def __init__(self, hide=True, size_board=6):
+        self.hide = hide
+        self.size_board = size_board
+        self.sunk_ships = 0
+        self.field = [["O"] * size_board for _ in range(size_board)]
+        self.busy_point = []
+        self.list_ships = []
+
+    def check_point_out_board(self, pnt):  # Метод проверки нахождения точки вне поля
+        return not ((0 <= pnt.x < self.size_board) and (0 <= pnt.y < self.size_board))
+
+    def contour_ship(self, ship_locate, verb=False):
+        points_near_ship = [
+            (-1, -1), (-1, 0), (-1, 1),
+            (0, -1), (0, 0), (0, 1),
+            (1, -1), (1, 0), (1, 1)
+        ]
+        for pnt in ship_locate.points:
+            for dx, dy in points_near_ship:
+                cur = Point(pnt.x + dx, pnt.y + dy)
+                if not (self.check_point_out_board(cur)) and cur not in self.busy_point:
+                    if verb:
+                        self.field[cur.x][cur.y] = "."
+                    self.busy_point.append(cur)
+
+    def add_ship(self, ship_locate):  # Метод добавления корабля на поле
+        for pnt in ship_locate.points:
+            if self.check_point_out_board(pnt) or pnt in self.busy_point:
+                raise BoardWrongShipException()
+        for pnt in ship_locate.points:
+            self.field[pnt.x][pnt.y] = "█"
+            self.busy_point.append(pnt)
+        self.list_ships.append(ship_locate)
+        self.contour_ship(ship_locate)
+
+    def shot(self, pnt):
+        if self.check_point_out_board(pnt):
+            raise BoardOutException()
+
+        if pnt in self.busy_point:
+            raise BoardUsedException()
+        self.busy_point.append(pnt)
+
+        for ship in self.list_ships:
+            if ship.shooting(pnt):
+                ship.lives -= 1
+                self.field[pnt.x][pnt.y] = "X"
+                if ship.lives == 0:
+                    self.sunk_ships += 1
+                    self.contour_ship(ship, verb=True)
+                    g.game_message(6)
+                    return False
+                else:
+                    g.game_message(7)
+                    return True
+
+        self.field[pnt.x][pnt.y] = "."
+        g.game_message(8)
+        return False
+
+    def begin(self):
+        self.busy_point = []
+
+    def defeat(self):
+        return self.sunk_ships == len(self.list_ships)
+
+    def output_number(self):
+        if self.sunk_ships == 1:
+            print(f"Потоплен {self.sunk_ships} корабль из {len(self.list_ships)}")
+        elif 1 < self.sunk_ships < 5:
+            print(f'Потоплено {self.sunk_ships} корабля из {len(self.list_ships)}')
+        else:
+            print(f'Потоплено {self.sunk_ships} кораблей из {len(self.list_ships)}')
+
+
+class ShipLocate:  # Класс корабля
+    def __init__(self, direct, ship_length, ship_orient):
+        self.lives = ship_length
+        self.direct = direct
+        self.ship_length = ship_length
+        self.ship_orient = ship_orient
+
+    @property
+    def points(self):
+        ship_points = []
+        for i in range(self.ship_length):
+            current_row = self.direct.x
+            current_col = self.direct.y
+            if self.ship_orient == 0:    # horizont orientation
+                current_col += i
+            elif self.ship_orient == 1:  # vertical orientation
+                current_row += i
+            ship_points.append(Point(current_row, current_col))
+
+        return ship_points
+
+    def shooting(self, shot):
+        return shot in self.points
+
+
+class Point:  # Конструктор точки
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+    def __eq__(self, other):
+        return self.x == other.x and self.y == other.y
+
+    def __repr__(self):
+        return f"Point({self.x}, {self.y})"
+
+
+class Game:
+    def __init__(self, size_board=6):
+        self.size_board = size_board
+        player_1 = self.random_board()
+        computer = self.random_board()
+        self.preview_mess = ["-" * 58,
+                             "                    Игра -Морской бой-                    ",
+                             "             Для выстрела через пробел введите            ",
+                             "                номер строки и колонки (x y)              ",
+                             "-" * 58
+                             ]
+        self.game_mess = ["Ходит пользователь!",
+                          "Ходит компьютер!",
+                          "Пользователь выиграл!",
+                          "Компьютер выиграл!",
+                          "Необходимо ввести две координаты!",
+                          "Введите числа!",
+                          "Корабль уничтожен!",
+                          "Корабль ранен!",
+                          "Выстрел не попал в цель!"
+                          ]
+        self.ai = AI(computer, player_1)
+        self.us = User(player_1, computer)
+        self.num = 0
+
+    def try_board(self):  # Метод расстановки кораблей
+        create_board = GameBoard(size_board=self.size_board)
+        create_attempts = 0
+        fleet_length = [3, 2, 2, 1, 1, 1, 1]
+        for ship_len in fleet_length:
+            while True:
+                create_attempts += 1
+                if create_attempts > 50:
+                    return None
+                ship = ShipLocate(Point(random.randint(0, self.size_board - 1),
+                                        random.randint(0, self.size_board - 1)),
+                                  ship_len, random.randint(0, 1))
+                try:
+                    create_board.add_ship(ship)
+                    break
+                except BoardWrongShipException:
+                    pass
+        create_board.begin()
+        return create_board
+
+    def game_message(self, message):
+        print(self.game_mess[message])
+
+    def random_board(self):  # Метод запуска расстановки до момента корректного случая
+        create_board = None
+        while create_board is None:
+            create_board = self.try_board()
+        return create_board
+
+    def show_boards(self):
+        board_1 = self.us.board.field
+        board_2 = self.ai.board.field
+        col = ['0', '1', '2', '3', '4', '5']
+        header = '    ' + '   '.join(col[:self.size_board]) + '  '
+        result = '\n' + f'Ваш флот'.center(3 + 4 * self.size_board) \
+                 + ' ' * 5 + f'Флот компьютера'.center(3 + 4 * self.size_board) + '\n'
+        result += header + ' ' * 5 + header
+        result += '\n+' + '-' * 57 + '+'
+        for n in range(0, self.size_board):
+            result += f'\n{n} | ' + ' | '.join(board_1[n]) + ' |'
+            result += ' ' * 5
+            if gbo.hide:
+                result += f'{n} | ' + ' | '.join(board_2[n]).replace("█", "O") + ' |'
+            else:
+                result += f'{n} | ' + ' | '.join(board_2[n]) + ' |'
+        result += '\n+' + '-' * 57 + '+'
+        print(result)
+
+    def __str__(self):
+        mess = ""
+        for i in self.preview_mess:
+            mess += "\n" + i
+        return mess
+
+    def loop(self):  # Метод основного цикла
+        num = 0
+        while True:
+            self.show_boards()
+
+            if num % 2 == 0:
+                g.game_message(0)
+                self.ai.board.output_number()
+                repeat = self.us.move()
+            else:
+                g.game_message(1)
+                self.us.board.output_number()
+                repeat = self.ai.move()
+            if repeat:
+                num -= 1
+            if self.ai.board.defeat():
+                self.show_boards()
+                g.game_message(2)
+                break
+            if self.us.board.defeat():
+                self.show_boards()
+                g.game_message(3)
+                break
+            num += 1
+
+    def start(self):
+        print(g)
+        self.loop()
+
+
+class Player:
+    def __init__(self, board, enemy):
+        self.board = board
+        self.enemy = enemy
+
+    def ask(self):
+        raise NotImplementedError()
+
+    def move(self):
+        while True:
+            try:
+                target = self.ask()
+                repeat = self.enemy.shot(target)
+                return repeat
+            except BoardException as e:
+                print(e)
+
+
+class AI(Player):
+    def ask(self):
+        pnt = Point(random.randint(0, 5), random.randint(0, 5))
+        print(f"Ход компьютера: {pnt.x} {pnt.y}")
+        return pnt
+
+
+class User(Player):
+    def ask(self):
+        while True:
+            rowcol = input("Ваш ход: ").split()
+
+            if len(rowcol) != 2:
+                g.game_message(4)
+                continue
+
+            x, y = rowcol
+
+            if not (x.isdigit()) or not (y.isdigit()):
+                g.game_message(5)
+                continue
+            x, y = int(x), int(y)
+
+            return Point(x, y)
+
+
+if __name__ == '__main__':
+    gbo = GameBoard()
+    g = Game()
+    g.start()

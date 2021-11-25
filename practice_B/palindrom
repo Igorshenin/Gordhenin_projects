@@ -1,0 +1,12 @@
+a=12344321
+lst = list(str(a))
+str = ''.join(lst)
+str1 = ''.join(lst.reverse())
+if str == str1:
+    print("Это палиндром")
+else:
+    print("Это не палиндромом")
+
+#  Способ второй без списков
+num = 12345678
+print(str(num) == str(num)[::-1])

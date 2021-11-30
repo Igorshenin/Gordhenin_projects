@@ -1,0 +1,40 @@
+#####################################################################################################################
+#                   Простейший архиватор работает со строковыми значениями только из букв                           #
+# ###################################################################################################################
+def text_zip(text_a):
+    last = text_a[0]
+    count = 0
+    result = ''
+    for i in text_a:
+        if i == last:
+            count += 1
+        else:
+            result += last + str(count)
+            last = i
+            count = 1
+    result += last + str(count)
+    return result
+
+
+def text_unzip(text_b):
+    result = ''
+    nums = ''
+    last = ''
+    for i in text_b:
+        if i.isalpha() and nums == '':
+            last = i
+        elif i.isnumeric():
+            nums += i
+        elif i.isalpha() and len(nums) > 0:
+            result += last * int(nums)
+            last = i
+            nums = ''
+    result += last * int(nums)
+    return result
+
+
+text = 'jjjjjggghhhhhiiiiiiijjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjjj'
+c = text_zip(text)
+print('TEXT -         ', text)
+print('ZIP string -   ', c)
+print('UNZIP string - ', text_unzip(c))
